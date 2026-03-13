@@ -18,7 +18,7 @@
     --cream: #faf8f4;
     --red-alert: #c0392b;
     --amber: #d68910;
-    --safe: #2e7d32;
+    /* ZMIANA: usunięto --safe: #2e7d32 — nigdzie nie używane */
   }
 
   body {
@@ -319,6 +319,7 @@
     transition: all 0.25s;
   }
   .btn-primary:hover { background: var(--moss); }
+  .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
   .btn-secondary {
     display: inline-block;
     background: transparent;
@@ -402,6 +403,56 @@
   .cta-box .btn-primary:hover { background: #c9a87e; }
   .cta-sub { margin-top: 14px; color: rgba(245,240,232,0.5); font-size: 12px; }
 
+  /* SENDING STATES */
+  .sending-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(250,248,244,0.92);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .sending-overlay.active { display: flex; }
+  .sending-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #ddd8ce;
+    border-top-color: var(--moss);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sending-text { font-size: 15px; color: var(--soil); font-weight: 400; }
+
+  .submit-error {
+    display: none;
+    background: #fdf0ef;
+    border: 1px solid var(--red-alert);
+    color: var(--red-alert);
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .submit-error.visible { display: block; }
+
+  /* ZMIANA: dodano styl dla CTA linku — zastępuje <a><button> */
+  .cta-link {
+    display: inline-block;
+    background: var(--straw);
+    color: var(--soil);
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 16px 36px;
+    text-decoration: none;
+    transition: all 0.25s;
+  }
+  .cta-link:hover { background: #c9a87e; }
+
   @media (max-width: 600px) {
     .persona-grid, .radio-grid, .result-blocks { grid-template-columns: 1fr; }
     .main { padding: 24px 20px; }
@@ -412,6 +463,12 @@
 </style>
 </head>
 <body>
+
+<!-- SENDING OVERLAY -->
+<div class="sending-overlay" id="sending-overlay">
+  <div class="sending-spinner"></div>
+  <div class="sending-text">Wysyłam Twoje dane...</div>
+</div>
 
 <div class="header">
   <div class="logo">Kancelaria <span>Nowacka & Górnicki</span></div>
@@ -557,16 +614,19 @@
     <div class="screen-sub">Analiza sytuacji + rekomendacja trafi do Ciebie w ciągu 24h roboczych. Zero presji — zero sprzedaży.</div>
 
     <input type="text" class="input-field" id="contact-name" placeholder="Imię (wystarczy pierwsze)">
-    <input type="tel" class="input-field" id="contact-phone" placeholder="Numer telefonu">
+    <!-- ZMIANA: dodano "(opcjonalnie)" do placeholdera telefonu — nie jest walidowany, więc powinno być jasne -->
+    <input type="tel" class="input-field" id="contact-phone" placeholder="Numer telefonu (opcjonalnie)">
     <input type="email" class="input-field" id="contact-email" placeholder="Adres e-mail">
 
     <div style="background:#f5f0e8;padding:16px 18px;border-left:3px solid var(--straw);font-size:13px;color:#666;line-height:1.6;">
       Twoje dane trafiają wyłącznie do Kancelarii Nowacka & Górnicki. Nie będziemy do Ciebie dzwonić bez powodu — skontaktujemy się tylko żeby powiedzieć co możemy zrobić.
     </div>
 
+    <div class="submit-error" id="submit-error"></div>
+
     <div class="btn-row">
       <button class="btn-secondary" onclick="prevScreen(4)">← Wstecz</button>
-      <button class="btn-primary" onclick="showResult()">Pokaż wynik →</button>
+      <button class="btn-primary" id="btn-submit" onclick="showResult()">Pokaż wynik →</button>
     </div>
   </div>
 
@@ -607,124 +667,233 @@
     <div class="cta-box">
       <h3>Bezpłatna konsultacja — 15 minut</h3>
       <p>Karolina Nowacka lub ktoś z zespołu odpowie na Twoje pytania.<br>Konkretnie. Bez żargonu. Bez zobowiązań.</p>
-      <button class="btn-primary" onclick="alert('Tutaj formularz umówienia rozmowy lub link do Calendly')">[ UMÓW ROZMOWĘ ]</button>
-      <div class="cta-sub">lub zadzwoń: +48 ___ ___ ___ · Konin</div>
+      <!-- ZMIANA: usunięto goły URL + zamieniono <a><button> na sam <a> ze stylami — poprawny HTML -->
+      <a href="https://calendly.com/bezdlugow/15min" target="_blank" class="cta-link">UMÓW ROZMOWĘ</a>
+      <div class="cta-sub">lub zadzwoń: +48 792 591 365 · Konin</div>
     </div>
   </div>
 
 </div>
 
 <script>
-  const debtLabels = [
-    "do 40 tys. PLN",
-    "40–80 tys. PLN",
-    "80–150 tys. PLN",
-    "100–200 tys. PLN",
-    "200–350 tys. PLN",
-    "350–500 tys. PLN",
-    "500 tys. – 1 mln PLN",
-    "1–2 mln PLN",
-    "2–5 mln PLN",
-    "5–10 mln PLN",
-    "powyżej 10 mln PLN"
+  var GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxIUlWmoWViAPqyK7_whVw0qt_ho_7DBYfOaVoRK_noQ-DPgkqWRYVVNsRJffNw1dohJA/exec';
+
+  var debtLabels = [
+    'do 40 tys. PLN',
+    '40–80 tys. PLN',
+    '80–150 tys. PLN',
+    '100–200 tys. PLN',
+    '200–350 tys. PLN',
+    '350–500 tys. PLN',
+    '500 tys. – 1 mln PLN',
+    '1–2 mln PLN',
+    '2–5 mln PLN',
+    '5–10 mln PLN',
+    'powyżej 10 mln PLN'
   ];
 
   function updateDebt(v) {
     document.getElementById('debt-display').textContent = debtLabels[v];
   }
 
-  // Persona select
-  document.querySelectorAll('#persona-select .persona-card').forEach(c => {
-    c.addEventListener('click', () => {
-      document.querySelectorAll('#persona-select .persona-card').forEach(x => x.classList.remove('selected'));
+  // Persona select (single-select)
+  document.querySelectorAll('#persona-select .persona-card').forEach(function(c) {
+    c.addEventListener('click', function() {
+      document.querySelectorAll('#persona-select .persona-card').forEach(function(x) { x.classList.remove('selected'); });
       c.classList.add('selected');
     });
   });
 
-  // Radio selects
-  ['etap-select', 'dochod-select'].forEach(id => {
-    document.querySelectorAll(`#${id} .radio-opt`).forEach(o => {
-      o.addEventListener('click', () => {
-        document.querySelectorAll(`#${id} .radio-opt`).forEach(x => x.classList.remove('selected'));
+  // Radio selects (single-select)
+  ['etap-select', 'dochod-select'].forEach(function(id) {
+    document.querySelectorAll('#' + id + ' .radio-opt').forEach(function(o) {
+      o.addEventListener('click', function() {
+        document.querySelectorAll('#' + id + ' .radio-opt').forEach(function(x) { x.classList.remove('selected'); });
         o.classList.add('selected');
       });
     });
   });
 
-  // Checkboxes
-  ['wierzyciele', 'ochrona'].forEach(id => {
-    document.querySelectorAll(`#${id} .check-opt`).forEach(o => {
-      o.addEventListener('click', () => o.classList.toggle('selected'));
+  // Checkboxes (multi-select)
+  ['wierzyciele', 'ochrona'].forEach(function(id) {
+    document.querySelectorAll('#' + id + ' .check-opt').forEach(function(o) {
+      o.addEventListener('click', function() { o.classList.toggle('selected'); });
     });
   });
 
+  // --- NAWIGACJA EKRANÓW ---
+
   function nextScreen(from) {
-    document.getElementById(`screen-${from}`).classList.remove('active');
-    document.getElementById(`screen-${from+1}`).classList.add('active');
-    document.getElementById(`tab-${from}`).classList.remove('active');
-    document.getElementById(`tab-${from}`).classList.add('done');
-    document.getElementById(`tab-${from+1}`).classList.add('active');
+    document.getElementById('screen-' + from).classList.remove('active');
+    document.getElementById('screen-' + (from + 1)).classList.add('active');
+    document.getElementById('tab-' + from).classList.remove('active');
+    document.getElementById('tab-' + from).classList.add('done');
+    document.getElementById('tab-' + (from + 1)).classList.add('active');
     window.scrollTo(0, 0);
   }
 
   function prevScreen(from) {
-    document.getElementById(`screen-${from}`).classList.remove('active');
-    document.getElementById(`screen-${from-1}`).classList.add('active');
-    document.getElementById(`tab-${from}`).classList.remove('active');
-    document.getElementById(`tab-${from-1}`).classList.remove('done');
-    document.getElementById(`tab-${from-1}`).classList.add('active');
+    document.getElementById('screen-' + from).classList.remove('active');
+    document.getElementById('screen-' + (from - 1)).classList.add('active');
+    document.getElementById('tab-' + from).classList.remove('active');
+    document.getElementById('tab-' + (from - 1)).classList.remove('done');
+    document.getElementById('tab-' + (from - 1)).classList.add('active');
     window.scrollTo(0, 0);
   }
 
+  // --- ZBIERANIE DANYCH ---
+
+  function collectFormData() {
+    var personaEl = document.querySelector('#persona-select .persona-card.selected');
+    var etapEl = document.querySelector('#etap-select .radio-opt.selected');
+    var dochodEl = document.querySelector('#dochod-select .radio-opt.selected');
+
+    var wierzyciele = [];
+    document.querySelectorAll('#wierzyciele .check-opt.selected').forEach(function(el) {
+      wierzyciele.push(el.dataset.val);
+    });
+
+    var ochrona = [];
+    document.querySelectorAll('#ochrona .check-opt.selected').forEach(function(el) {
+      ochrona.push(el.dataset.val);
+    });
+
+    return {
+      persona:     personaEl ? personaEl.dataset.val : 'brak',
+      debtVal:     parseInt(document.getElementById('debt-slider').value, 10),
+      debtLabel:   debtLabels[parseInt(document.getElementById('debt-slider').value, 10)],
+      wierzyciele: wierzyciele.join(', ') || 'brak',
+      etap:        etapEl ? etapEl.dataset.val : 'brak',
+      ochrona:     ochrona.join(', ') || 'brak',
+      dochod:      dochodEl ? dochodEl.dataset.val : 'brak',
+      name:        document.getElementById('contact-name').value.trim(),
+      phone:       document.getElementById('contact-phone').value.trim(),
+      email:       document.getElementById('contact-email').value.trim()
+    };
+  }
+
+  // --- WALIDACJA ---
+
+  function validateContact() {
+    var name = document.getElementById('contact-name').value.trim();
+    var email = document.getElementById('contact-email').value.trim();
+    var errorEl = document.getElementById('submit-error');
+
+    if (!name) {
+      errorEl.textContent = 'Podaj imię — potrzebujemy go do kontaktu.';
+      errorEl.classList.add('visible');
+      return false;
+    }
+    if (!email || email.indexOf('@') === -1) {
+      errorEl.textContent = 'Podaj poprawny adres e-mail.';
+      errorEl.classList.add('visible');
+      return false;
+    }
+    errorEl.classList.remove('visible');
+    return true;
+  }
+
+  // --- WYSYŁKA DO GOOGLE SHEETS ---
+
+  function sendToGoogleSheets(data, score, redukcja) {
+    var payload = {
+      timestamp: new Date().toISOString(),
+      persona:     data.persona,
+      debtLabel:   data.debtLabel,
+      wierzyciele: data.wierzyciele,
+      etap:        data.etap,
+      ochrona:     data.ochrona,
+      dochod:      data.dochod,
+      name:        data.name,
+      phone:       data.phone,
+      email:       data.email,
+      score:       score + '%',
+      redukcja:    redukcja
+    };
+
+    // ZMIANA: zwracamy Promise z fetch zamiast async/await — lepsza kompatybilność
+    return fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function(err) {
+      console.error('Błąd wysyłki do Google Sheets:', err);
+    });
+  }
+
+  // --- SCORING ---
+
+  function calculateScore(data) {
+    var score = 60;
+
+    // Etap postępowania
+    if (data.etap === 'myslę')        score = 85;
+    else if (data.etap === 'pisma')    score = 72;
+    else if (data.etap === 'komornik') score = 52;
+    else if (data.etap === 'wniosek') score = 65;
+
+    // Dochód
+    if (data.dochod === 'tak')              score += 10;
+    else if (data.dochod === 'ograniczony') score += 3;
+    else if (data.dochod === 'nie')         score -= 8;
+    else if (data.dochod === 'etat')        score += 6;
+
+    // Wyższy dług = więcej sensu restrukturyzacji
+    if (data.debtVal >= 5) score += 5;
+
+    return Math.min(95, Math.max(30, score));
+  }
+
+  // --- GŁÓWNA FUNKCJA: POKAŻ WYNIK ---
+
   function showResult() {
-    // Collect inputs
-    const persona = document.querySelector('#persona-select .persona-card.selected')?.dataset.val;
-    const etap = document.querySelector('#etap-select .radio-opt.selected')?.dataset.val;
-    const dochod = document.querySelector('#dochod-select .radio-opt.selected')?.dataset.val;
-    const debtVal = parseInt(document.getElementById('debt-slider').value);
+    if (!validateContact()) return;
 
-    // Score logic
-    let score = 60;
-    if (etap === 'myslę') score = 85;
-    else if (etap === 'pisma') score = 72;
-    else if (etap === 'komornik') score = 52;
-    else if (etap === 'wniosek') score = 65;
+    var data = collectFormData();
+    var score = calculateScore(data);
 
-    if (dochod === 'tak') score += 10;
-    else if (dochod === 'ograniczony') score += 3;
-    else if (dochod === 'nie') score -= 8;
+    // Pokaż spinner
+    document.getElementById('sending-overlay').classList.add('active');
 
-    if (debtVal >= 5) score += 5; // wyższe kwoty = więcej sensu restrukturyzacji
-    score = Math.min(95, Math.max(30, score));
+    // Oblicz rekomendację
+    var redukcja, czasAkcji, rekText;
 
-    // Redukcja
-    let redukcja, czasAkcji, rekText;
     if (score >= 75) {
-      redukcja = "30–60%";
-      czasAkcji = etap === 'myslę' ? "Działasz z wyprzedzeniem" : "Działaj w ciągu 2–4 tygodni";
-      rekText = `Na podstawie Twoich odpowiedzi — <strong>Twoja sytuacja ma wyjście.</strong> Restrukturyzacja sądowa lub pozasądowa może chronić Twój majątek i zredukować dług o 30–60%. Kluczowe jest działanie zanim wierzyciel złoży wniosek o upadłość. Umów bezpłatną rozmowę — powiemy Ci konkretnie od czego zacząć.`;
+      redukcja = '30–60%';
+      czasAkcji = (data.etap === 'myslę') ? 'Działasz z wyprzedzeniem' : 'Działaj w ciągu 2–4 tygodni';
+      rekText = 'Na podstawie Twoich odpowiedzi — <strong>Twoja sytuacja ma wyjście.</strong> Restrukturyzacja sądowa lub pozasądowa może chronić Twój majątek i zredukować dług o 30–60%. Kluczowe jest działanie zanim wierzyciel złoży wniosek o upadłość. Umów bezpłatną rozmowę — powiemy Ci konkretnie od czego zacząć.';
     } else if (score >= 52) {
-      redukcja = "20–40%";
-      czasAkcji = "Działaj w ciągu 1–2 tygodni";
-      rekText = `Twoja sytuacja jest trudna, ale <strong>nie beznadziejna.</strong> Komornik lub nakaz zapłaty zawęża opcje — ale restrukturyzacja nadal może zatrzymać egzekucję i dać Ci czas na oddech. Każdy tydzień zwłoki zamyka kolejne drzwi. Zadzwoń do nas dziś.`;
+      redukcja = '20–40%';
+      czasAkcji = 'Działaj w ciągu 1–2 tygodni';
+      rekText = 'Twoja sytuacja jest trudna, ale <strong>nie beznadziejna.</strong> Komornik lub nakaz zapłaty zawęża opcje — ale restrukturyzacja nadal może zatrzymać egzekucję i dać Ci czas na oddech. Każdy tydzień zwłoki zamyka kolejne drzwi. Zadzwoń do nas dziś.';
     } else {
-      redukcja = "do 20%";
-      czasAkcji = "Działaj natychmiast";
-      rekText = `Twoja sytuacja wymaga <strong>szybkiej diagnozy.</strong> Część opcji może być już zamknięta — ale nie wszystkie. Zanim podejmiesz jakąkolwiek decyzję, porozmawiaj z nami. 15 minut może zmienić perspektywę na całą sprawę.`;
+      redukcja = 'do 20%';
+      czasAkcji = 'Działaj natychmiast';
+      rekText = 'Twoja sytuacja wymaga <strong>szybkiej diagnozy.</strong> Część opcji może być już zamknięta — ale nie wszystkie. Zanim podejmiesz jakąkolwiek decyzję, porozmawiaj z nami. 15 minut może zmienić perspektywę na całą sprawę.';
     }
 
-    // Fill result
-    document.getElementById('score-text').textContent = score + "%";
-    document.getElementById('score-desc').textContent = score >= 75 ? "Wysoka szansa na skuteczny układ z wierzycielami" : score >= 52 ? "Umiarkowana szansa — czas ma znaczenie" : "Sytuacja wymaga pilnej diagnozy";
-    document.getElementById('res-redukcja').textContent = redukcja;
-    document.getElementById('res-czas').textContent = czasAkcji;
-    document.getElementById('rek-text').innerHTML = rekText;
+    // Wyślij dane, potem pokaż wynik
+    sendToGoogleSheets(data, score, redukcja).then(function() {
+      // Schowaj spinner
+      document.getElementById('sending-overlay').classList.remove('active');
 
-    const fill = document.getElementById('score-fill');
-    fill.className = 'score-fill ' + (score >= 75 ? 'high' : score >= 52 ? 'mid' : 'low');
+      // Wypełnij wynik
+      document.getElementById('score-text').textContent = score + '%';
+      document.getElementById('score-desc').textContent =
+        score >= 75 ? 'Wysoka szansa na skuteczny układ z wierzycielami' :
+        score >= 52 ? 'Umiarkowana szansa — czas ma znaczenie' :
+        'Sytuacja wymaga pilnej diagnozy';
+      document.getElementById('res-redukcja').textContent = redukcja;
+      document.getElementById('res-czas').textContent = czasAkcji;
+      document.getElementById('rek-text').innerHTML = rekText;
 
-    nextScreen(4);
-    setTimeout(() => { fill.style.width = score + '%'; }, 200);
+      var fill = document.getElementById('score-fill');
+      fill.className = 'score-fill ' + (score >= 75 ? 'high' : score >= 52 ? 'mid' : 'low');
+
+      nextScreen(4);
+      setTimeout(function() { fill.style.width = score + '%'; }, 200);
+    });
   }
 </script>
 </body>
